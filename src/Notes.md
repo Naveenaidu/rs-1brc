@@ -12,3 +12,11 @@ TODO:
 2. Write the code for test case to compare the values with the *.out file
     -> We can just read the *.out file into a hashmap
     -> We can then compare the hashmap
+3. Code to write the result to the file
+
+----------------------------
+
+TODO:
+
+tests failing for measurements-20.txt -> FIX THIS
+
