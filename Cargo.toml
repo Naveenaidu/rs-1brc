@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.4.13", features = ["derive"] }
+rust_decimal = "1.34"
+rust_decimal_macros = "1.34"
