@@ -26,4 +26,9 @@ tests failing for measurements-20.txt -> FIX THIS -> DONE
 * Test naive solution
 * Have a flamegraph OR a trace.
 
+IDEA: We can write a blog about how to setup tracing infra and code in RUST
+    * Not enough documentation about it
+    * How to setup global tracer
+    * How to have nested span, multiple span etc
+
 

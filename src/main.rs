@@ -1,7 +1,15 @@
 use clap::Parser;
+use opentelemetry::{
+    global::{self},
+    trace::{TraceContextExt, Tracer},KeyValue,
+};
+use opentelemetry_otlp::WithExportConfig;
+
+use opentelemetry_semantic_conventions as semcov;
 use rust_decimal::{Decimal, RoundingStrategy};
 use rust_decimal_macros::dec;
-use std::collections::HashMap;
+use std::{collections::HashMap, error};
+
 mod util;
 
 #[derive(Parser, Debug)]
@@ -33,62 +41,101 @@ fn read_line(data: String) -> (String, Decimal) {
     (station_name, value)
 }
 
+pub fn init_tracer() {
+    let otlp_exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint("http://localhost:4317");
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(otlp_exporter)
+        .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
+            opentelemetry_sdk::Resource::new(vec![
+                KeyValue::new(semcov::resource::SERVICE_NAME, "rs-1brc"),
+                KeyValue::new(
+                    semcov::resource::SERVICE_VERSION,
+                    env!("CARGO_PKG_VERSION").to_string(),
+                ),
+            ]),
+        ))
+        .install_simple()
+        .expect("Failed to install tracer");
+    global::set_tracer_provider(tracer.provider().unwrap());
+}
+
 // Calculate the station values
 // For new entry: The min and max and mean would be the same
 // For existing entry: The min and max would be updated if the new value is less than min or greater than max. And mean will be calculated after getting all count
 fn calculate_station_values(data: String) -> HashMap<String, StationValues> {
+    let tracer = global::tracer("rs-1brc");
     let mut result: HashMap<String, StationValues> = HashMap::new();
-    for line in data.lines() {
-        let (station_name, value) = read_line(line.to_string());
-        result
-            .entry(station_name)
-            .and_modify(|e| {
-                if value < e.min {
-                    e.min = value;
-                }
-                if value > e.max {
-                    e.max = value;
-                }
-                e.mean = e.mean + value;
-                e.count += dec!(1);
-            })
-            .or_insert(StationValues {
-                min: value,
-                max: value,
-                mean: value,
-                count: dec!(1),
-            });
-    }
+    tracer.in_span("calculate_station_values", |_ctx| {
+        for line in data.lines() {
+            let (station_name, value) = read_line(line.to_string());
+            result
+                .entry(station_name)
+                .and_modify(|e| {
+                    if value < e.min {
+                        e.min = value;
+                    }
+                    if value > e.max {
+                        e.max = value;
+                    }
+                    e.mean = e.mean + value;
+                    e.count += dec!(1);
+                })
+                .or_insert(StationValues {
+                    min: value,
+                    max: value,
+                    mean: value,
+                    count: dec!(1),
+                });
+        }
 
-    // Calculate the mean for all entries
-    for (_, station_values) in result.iter_mut() {
-        station_values.max = station_values
-            .max
-            .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        station_values.min = station_values
-            .min
-            .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        station_values.mean = (station_values.mean / station_values.count)
-            .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-    }
+        tracer.in_span("calculate mean", |_ctx| {
+            // Calculate the mean for all entries
+            for (_, station_values) in result.iter_mut() {
+                station_values.max = station_values
+                    .max
+                    .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+                station_values.min = station_values
+                    .min
+                    .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+                station_values.mean = (station_values.mean / station_values.count)
+                    .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+            }
+        })
+    });
 
     result
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn error::Error>> {
     let args = Args::parse();
-    let data = std::fs::read_to_string(args.file).expect("Failed to read file");
-    let result = calculate_station_values(data);
-    print!("{:?}", result);
+    init_tracer();
+    let tracer = global::tracer("rs-1brc");
+    tracer.in_span("main", |cx| {
+        cx.span().set_attribute(opentelemetry::KeyValue {
+            key: "hello".into(),
+            value: "world".into(),
+        });
+        let data = std::fs::read_to_string(args.file).expect("Failed to read file");
+        let result = calculate_station_values(data);
+        print!("{:?}", result);
+    });
+
+    global::shutdown_tracer_provider();
 
     // print!("\n-----------------------------------\n");
     // let test_output = crate::util::read_test_output_file_tmp("tests/measurements-3.out".to_string());
     // print!("{:?}", test_output);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::{fs, path::PathBuf};
+
 
     use crate::calculate_station_values;
     use crate::util::read_test_output_file;
