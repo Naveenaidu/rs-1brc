@@ -14,9 +14,16 @@ TODO:
     -> We can then compare the hashmap
 3. Code to write the result to the file
 
-----------------------------
 
 TODO:
 
-tests failing for measurements-20.txt -> FIX THIS
+tests failing for measurements-20.txt -> FIX THIS -> DONE
+
+----------------------------
+
+30/03/24
+
+* Test naive solution
+* Have a flamegraph OR a trace.
+
 
