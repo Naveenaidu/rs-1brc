@@ -1,7 +1,8 @@
 use clap::Parser;
 use opentelemetry::{
     global::{self},
-    trace::{TraceContextExt, Tracer},KeyValue,
+    trace::{TraceContextExt, Tracer},
+    KeyValue,
 };
 use opentelemetry_otlp::WithExportConfig;
 
@@ -36,6 +37,7 @@ struct StationValues {
 
 fn read_line(data: String) -> (String, Decimal) {
     let parts: Vec<&str> = data.split(';').collect();
+    print!("{:?} | parts: {:?} \n", data, parts);
     let station_name = parts[0].to_string();
     let value = parts[1].parse::<Decimal>().expect("Failed to parse value");
     (station_name, value)
@@ -119,15 +121,80 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             key: "hello".into(),
             value: "world".into(),
         });
-        let data = std::fs::read_to_string(args.file).expect("Failed to read file");
-        let result = calculate_station_values(data);
-        print!("{:?}", result);
+
+        let mut file_content = Vec::new();
+        let mut file = std::fs::File::open(&args.file).expect("Failed to open file");
+        std::io::Read::read_to_end(&mut file, &mut file_content)
+            .expect("Failed to read file content");
+
+        // let file_content = unsafe {String::from_utf8_unchecked(file_content)};
+        // let _result = calculate_station_values(file_content);
+        // print!("{:?}\n", result);
+
+        let mut result: HashMap<String, StationValues> = HashMap::new();
+        for chunk in file_content.split(|&x| x == b'\n') {
+            // For last line
+            if chunk.is_empty() {
+                continue;
+            }
+            let mut line_bytes = chunk.split(|&x| x == b';');
+            let station_name_bytes = line_bytes.next().expect("Failed to get station name");
+            let station_name = String::from_utf8(station_name_bytes.to_vec())
+                .expect("Failed to convert to string");
+
+            let value_bytes = line_bytes.next().expect("Failed to get value");
+            let value = String::from_utf8(value_bytes.to_vec())
+                .expect("Failed to convert to string")
+                .parse::<Decimal>()
+                .expect("Failed to parse value");
+
+
+            let line = String::from_utf8(chunk.to_vec()).expect("Failed to convert to string");
+            print!("{:?}\n", line);
+            // let (station_name, value) = read_line(line);
+            result
+                .entry(station_name)
+                .and_modify(|e| {
+                    if value < e.min {
+                        e.min = value;
+                    }
+                    if value > e.max {
+                        e.max = value;
+                    }
+                    e.mean = e.mean + value;
+                    e.count += dec!(1);
+                })
+                .or_insert(StationValues {
+                    min: value,
+                    max: value,
+                    mean: value,
+                    count: dec!(1),
+                });
+            
+            
+        }
+
+        for (_, station_values) in result.iter_mut() {
+            station_values.max = station_values
+                .max
+                .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+            station_values.min = station_values
+                .min
+                .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+            station_values.mean = (station_values.mean / station_values.count)
+                .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        }
+
+
+
+
+
     });
 
     global::shutdown_tracer_provider();
 
     // print!("\n-----------------------------------\n");
-    // let test_output = crate::util::read_test_output_file_tmp("tests/measurements-3.out".to_string());
+    // let test_output = crate::util::read_test_output_file("tests/measurements-20.out".to_string());
     // print!("{:?}", test_output);
     Ok(())
 }
@@ -135,7 +202,6 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
 #[cfg(test)]
 mod tests {
     use std::{fs, path::PathBuf};
-
 
     use crate::calculate_station_values;
     use crate::util::read_test_output_file;
