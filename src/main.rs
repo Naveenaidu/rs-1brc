@@ -9,7 +9,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_semantic_conventions as semcov;
 use rust_decimal::{Decimal, RoundingStrategy};
 use rust_decimal_macros::dec;
-use std::{collections::HashMap, error};
+use std::{collections::HashMap, error, io::{BufRead, BufReader}};
 
 mod util;
 
@@ -122,36 +122,15 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             value: "world".into(),
         });
 
-        let mut file_content = Vec::new();
-        let mut file = std::fs::File::open(&args.file).expect("Failed to open file");
-        std::io::Read::read_to_end(&mut file, &mut file_content)
-            .expect("Failed to read file content");
-
-        // let file_content = unsafe {String::from_utf8_unchecked(file_content)};
-        // let _result = calculate_station_values(file_content);
-        // print!("{:?}\n", result);
-
+        // let mut file_content = Vec::new();
+        let file = std::fs::File::open(&args.file).expect("Failed to open file");
+        let reader = BufReader::new(file);
         let mut result: HashMap<String, StationValues> = HashMap::new();
-        for chunk in file_content.split(|&x| x == b'\n') {
-            // For last line
-            if chunk.is_empty() {
-                continue;
-            }
-            let mut line_bytes = chunk.split(|&x| x == b';');
-            let station_name_bytes = line_bytes.next().expect("Failed to get station name");
-            let station_name = String::from_utf8(station_name_bytes.to_vec())
-                .expect("Failed to convert to string");
+        for line in reader.lines(){
+            let line = line.expect("Failed to read line");
+            let (station_name, value) = read_line(line);
+            // print!("{:?} | {:?}\n", station_name, value);
 
-            let value_bytes = line_bytes.next().expect("Failed to get value");
-            let value = String::from_utf8(value_bytes.to_vec())
-                .expect("Failed to convert to string")
-                .parse::<Decimal>()
-                .expect("Failed to parse value");
-
-
-            let line = String::from_utf8(chunk.to_vec()).expect("Failed to convert to string");
-            print!("{:?}\n", line);
-            // let (station_name, value) = read_line(line);
             result
                 .entry(station_name)
                 .and_modify(|e| {
@@ -170,20 +149,66 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
                     mean: value,
                     count: dec!(1),
                 });
-            
-            
-        }
 
-        for (_, station_values) in result.iter_mut() {
-            station_values.max = station_values
-                .max
-                .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-            station_values.min = station_values
-                .min
-                .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-            station_values.mean = (station_values.mean / station_values.count)
-                .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
         }
+        println!("{:?}", result);
+        // std::io::Read::read_to_end(&mut file, &mut file_content)
+        //     .expect("Failed to read file content");
+
+
+        // let mut result: HashMap<String, StationValues> = HashMap::new();
+        // for chunk in file_content.split(|&x| x == b'\n') {
+        //     // For last line
+        //     if chunk.is_empty() {
+        //         continue;
+        //     }
+        //     let mut line_bytes = chunk.split(|&x| x == b';');
+        //     let station_name_bytes = line_bytes.next().expect("Failed to get station name");
+        //     let station_name = String::from_utf8(station_name_bytes.to_vec())
+        //         .expect("Failed to convert to string");
+
+        //     let value_bytes = line_bytes.next().expect("Failed to get value");
+        //     let value = String::from_utf8(value_bytes.to_vec())
+        //         .expect("Failed to convert to string")
+        //         .parse::<Decimal>()
+        //         .expect("Failed to parse value");
+
+
+        //     let line = String::from_utf8(chunk.to_vec()).expect("Failed to convert to string");
+        //     print!("{:?}\n", line);
+        //     // let (station_name, value) = read_line(line);
+        //     result
+        //         .entry(station_name)
+        //         .and_modify(|e| {
+        //             if value < e.min {
+        //                 e.min = value;
+        //             }
+        //             if value > e.max {
+        //                 e.max = value;
+        //             }
+        //             e.mean = e.mean + value;
+        //             e.count += dec!(1);
+        //         })
+        //         .or_insert(StationValues {
+        //             min: value,
+        //             max: value,
+        //             mean: value,
+        //             count: dec!(1),
+        //         });
+            
+            
+        // }
+
+        // for (_, station_values) in result.iter_mut() {
+        //     station_values.max = station_values
+        //         .max
+        //         .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        //     station_values.min = station_values
+        //         .min
+        //         .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        //     station_values.mean = (station_values.mean / station_values.count)
+        //         .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        // }
 
 
 
