@@ -31,4 +31,13 @@ IDEA: We can write a blog about how to setup tracing infra and code in RUST
     * How to setup global tracer
     * How to have nested span, multiple span etc
 
+-------
+
+10/04/24
+
+* Analyze the flamegraph and see where the issue is happening
+* The time with second appraoch is around 20 minutes
+* Maybe change the Hash function
+* How about instead of Buffer read - we read the entire file at once?
+
 
