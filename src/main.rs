@@ -1,6 +1,5 @@
 use clap::Parser;
 
-use fast_float::parse;
 use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
 use std::{ error, io::{BufRead, BufReader}};
 use rustc_hash::FxHashMap;
@@ -30,7 +29,7 @@ struct StationValues {
 }
 
 
-fn read_line(data: String) -> (String, f32) {
+fn read_line(data: &str) -> (String, f32) {
     let mut parts = data.split(';');
     let station_name = parts.next().expect("Failed to parse station name");
     let value_str = parts.next().expect("Failed to parse value string");
@@ -42,15 +41,18 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let args = Args::parse();
 
     let file = std::fs::File::open(&args.file).expect("Failed to open file");
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
-    // let mut result: HashMap<String, StationValues> = HashMap::new();
     let mut result: FxHashMap<String, StationValues> = FxHashMap::default();
 
-    for line in reader.lines(){
-        let line = line.expect("Failed to read line");
+    let mut buf = String::new();
+    while let Ok(bytes_read) = reader.read_line(&mut buf) {
+        // Reached EOF
+        if bytes_read == 0 {
+            break;
+        }
+        let line = buf.trim();
         let (station_name, value) = read_line(line);
-
         result
             .entry(station_name)
             .and_modify(|e| {
@@ -69,7 +71,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 mean: value,
                 count: 1.0,
             });
-
+        
+        buf.clear();
     }
 
     for (_, station_values) in result.iter_mut() {
@@ -77,10 +80,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         let _min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
         let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap();
     }
-    // print!("{:?}", result);
-
-    
-
 
     Ok(())
 }
