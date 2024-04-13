@@ -1,15 +1,9 @@
 use clap::Parser;
-use opentelemetry::{
-    global::{self},
-    // trace::{TraceContextExt, Tracer},
-    KeyValue,
-};
-use opentelemetry_otlp::WithExportConfig;
 
-use opentelemetry_semantic_conventions as semcov;
 use rust_decimal::{Decimal, RoundingStrategy};
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, error, io::{BufRead, BufReader}};
+use rustc_hash::FxHashMap;
 
 mod util;
 
@@ -47,7 +41,11 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let file = std::fs::File::open(&args.file).expect("Failed to open file");
     let reader = BufReader::new(file);
-    let mut result: HashMap<String, StationValues> = HashMap::new();
+
+    // let mut result: HashMap<String, StationValues> = HashMap::new();
+    let mut result: FxHashMap<String, StationValues> = FxHashMap::default();
+
+    // TODO: Naveen: Instead of lines() use read_line(). This will not allocate a new string
     for line in reader.lines(){
         let line = line.expect("Failed to read line");
         let (station_name, value) = read_line(line);
@@ -83,8 +81,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         station_values.mean = (station_values.mean / station_values.count)
             .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
     }
+    // print!("{:?}", result);
 
-    print!("{:?}", result);
     
 
 
