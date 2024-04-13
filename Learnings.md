@@ -38,3 +38,9 @@ Question:
 5. Using `String:from_utf8` sometimes reads the file correctly and other times it doesn't
     * Why is that the case
     * whenever I use print!() statements then it usually ends up reading correctly!
+    * Looks like there is a problem with my Ram, see thread with Shraddha on this
+
+6. Do not ever use print!() in hot path
+    * Using print in the hot path ended up taking a long time
+    * This is because, print will take locks from OS and this will increase time
+    * This was the reason the first iteration was slow.
