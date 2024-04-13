@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use rust_decimal::{Decimal, RoundingStrategy};
+use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, error, io::{BufRead, BufReader}};
 use rustc_hash::FxHashMap;
@@ -23,16 +23,17 @@ struct StationValues {
     // We want all values rounded to 1 decimal place  using the semantics of IEEE 754 rounding-direction "roundTowardPositive"
     // Note: We use Decimal instaed of Floats, because it's easier to round up the fractional part of Decimals instead of floats
     // Read later: https://users.rust-lang.org/t/why-doesnt-round-have-an-argument-for-digits/100688/24
-    min: Decimal,
-    max: Decimal,
-    mean: Decimal,
-    count: Decimal,
+    min: f32,
+    max: f32,
+    mean: f32,
+    count: f32,
 }
 
-fn read_line(data: String) -> (String, Decimal) {
+
+fn read_line(data: String) -> (String, f32) {
     let mut parts = data.split(';');
     let station_name = parts.next().expect("Failed to parse station name");
-    let value = parts.next().expect("Failed to parse value string").parse::<Decimal>().expect("Failed to parse value as Decimal");
+    let value = parts.next().expect("Failed to parse value string").parse::<f32>().expect("Failed to parse value as Decimal");
     (station_name.to_owned(), value)
 }
 
@@ -45,7 +46,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     // let mut result: HashMap<String, StationValues> = HashMap::new();
     let mut result: FxHashMap<String, StationValues> = FxHashMap::default();
 
-    // TODO: Naveen: Instead of lines() use read_line(). This will not allocate a new string
     for line in reader.lines(){
         let line = line.expect("Failed to read line");
         let (station_name, value) = read_line(line);
@@ -60,26 +60,21 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                     e.max = value;
                 }
                 e.mean = e.mean + value;
-                e.count += dec!(1);
+                e.count += 1.0;
             })
             .or_insert(StationValues {
                 min: value,
                 max: value,
                 mean: value,
-                count: dec!(1),
+                count: 1.0,
             });
 
     }
 
     for (_, station_values) in result.iter_mut() {
-        station_values.max = station_values
-            .max
-            .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        station_values.min = station_values
-            .min
-            .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        station_values.mean = (station_values.mean / station_values.count)
-            .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap();
     }
     // print!("{:?}", result);
 
