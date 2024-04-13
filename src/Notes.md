@@ -40,4 +40,28 @@ IDEA: We can write a blog about how to setup tracing infra and code in RUST
 * Maybe change the Hash function
 * How about instead of Buffer read - we read the entire file at once?
 
+-----------
 
+11/04/24
+
+* Use read_line() instead of lines()
+* Instead of using Vec() in read_line() directly use next() -> This will avoid the allocation into
+  vector
+* 
+
+--------------
+
+13/04/24
+
+* Not using a convert to vector has reduced the time by a lot. Looks like allocation takes a long time.
+
+Ideas:
+
+How to speed up read_line:
+* parse seems to take a long time - Instead of using a lot of extra verification -> We might not need it
+* Create our own Decimal parser
+
+* read_lines() vs read_line()
+  -> https://users.rust-lang.org/t/why-using-the-read-lines-iterator-is-much-slower-than-using-read-line/92815/7
+
+* use a hashmap<&static str, String>
