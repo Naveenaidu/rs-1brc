@@ -1,8 +1,8 @@
 use clap::Parser;
 
+use fast_float::parse;
 use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
-use rust_decimal_macros::dec;
-use std::{collections::HashMap, error, io::{BufRead, BufReader}};
+use std::{ error, io::{BufRead, BufReader}};
 use rustc_hash::FxHashMap;
 
 mod util;
@@ -33,7 +33,8 @@ struct StationValues {
 fn read_line(data: String) -> (String, f32) {
     let mut parts = data.split(';');
     let station_name = parts.next().expect("Failed to parse station name");
-    let value = parts.next().expect("Failed to parse value string").parse::<f32>().expect("Failed to parse value as Decimal");
+    let value_str = parts.next().expect("Failed to parse value string");
+    let value = fast_float::parse(value_str).expect("Failed to parse value");
     (station_name.to_owned(), value)
 }
 
@@ -72,9 +73,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     }
 
     for (_, station_values) in result.iter_mut() {
-        let max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        let min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        let mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap();
+        let _max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let _min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap();
     }
     // print!("{:?}", result);
 
