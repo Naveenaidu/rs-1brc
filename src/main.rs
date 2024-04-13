@@ -1,9 +1,9 @@
 use clap::Parser;
+
 use rust_decimal::{Decimal, RoundingStrategy};
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, error, io::{BufRead, BufReader}};
 use rustc_hash::FxHashMap;
-
 
 mod util;
 
@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let file = std::fs::File::open(&args.file).expect("Failed to open file");
     let reader = BufReader::new(file);
+
     // let mut result: HashMap<String, StationValues> = HashMap::new();
     let mut result: FxHashMap<String, StationValues> = FxHashMap::default();
 
@@ -80,8 +81,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         station_values.mean = (station_values.mean / station_values.count)
             .round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
     }
-
     // print!("{:?}", result);
+
     
 
 
