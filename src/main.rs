@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
-use std::{ error, io::{BufRead, BufReader}};
+use std::{ error, io::{BufRead, BufReader}, str::from_utf8};
 use rustc_hash::FxHashMap;
 
 mod util;
@@ -19,9 +19,6 @@ struct Args {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct StationValues {
-    // We want all values rounded to 1 decimal place  using the semantics of IEEE 754 rounding-direction "roundTowardPositive"
-    // Note: We use Decimal instaed of Floats, because it's easier to round up the fractional part of Decimals instead of floats
-    // Read later: https://users.rust-lang.org/t/why-doesnt-round-have-an-argument-for-digits/100688/24
     min: f32,
     max: f32,
     mean: f32,
@@ -29,12 +26,13 @@ struct StationValues {
 }
 
 
-fn read_line(data: &str) -> (String, f32) {
-    let mut parts = data.split(';');
-    let station_name = parts.next().expect("Failed to parse station name");
+fn read_line(data: &Vec<u8>) -> (Vec<u8>, f32) {
+    let mut parts = data.rsplit(|&c| c == b';');
     let value_str = parts.next().expect("Failed to parse value string");
     let value = fast_float::parse(value_str).expect("Failed to parse value");
-    (station_name.to_owned(), value)
+    let station_name = parts.next().expect("Failed to parse station name");
+    
+    (station_name.to_vec(), value)
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -43,17 +41,21 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let file = std::fs::File::open(&args.file).expect("Failed to open file");
     let mut reader = BufReader::new(file);
 
-    let mut result: FxHashMap<String, StationValues> = FxHashMap::default();
+    let mut result2: FxHashMap<Vec<u8>, StationValues> = FxHashMap::default();
 
-    let mut buf = String::new();
-    while let Ok(bytes_read) = reader.read_line(&mut buf) {
+    let mut buf = Vec::new();
+    while let Ok(bytes_read) = reader.read_until(b'\n', &mut buf){
         // Reached EOF
         if bytes_read == 0 {
             break;
         }
-        let line = buf.trim();
-        let (station_name, value) = read_line(line);
-        result
+        buf.truncate(bytes_read - 1);
+
+
+        // let line = String::from_utf8_lossy(&buf).trim();
+        let (station_name, value) = read_line(&buf);
+        // println!("{:?} {:?}", station_name, value);
+        result2
             .entry(station_name)
             .and_modify(|e| {
                 if value < e.min {
@@ -75,11 +77,17 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         buf.clear();
     }
 
-    for (_, station_values) in result.iter_mut() {
+    for (_, station_values) in result2.iter_mut() {
+        // We want all values rounded to 1 decimal place  using the semantics of IEEE 754 rounding-direction "roundTowardPositive"
+        // Note: We use Decimal instaed of Floats, because it's easier to round up the fractional part of Decimals instead of floats
+        // Read later: https://users.rust-lang.org/t/why-doesnt-round-have-an-argument-for-digits/100688/24
         let _max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
         let _min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap();
+        let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
     }
+
+
+
 
     Ok(())
 }
