@@ -3,6 +3,9 @@ use clap::Parser;
 use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
 use std::{ error, io::{BufRead, BufReader, Read}, str::from_utf8};
 use rustc_hash::FxHashMap;
+// use memchr::memchr;
+
+
 
 mod util;
 
@@ -26,13 +29,13 @@ struct StationValues {
 }
 
 
-fn read_line(data: &[u8]) -> (Vec<u8>, f32) {
+fn read_line(data: &[u8]) -> (&[u8], f32) {
     let mut parts = data.rsplit(|&c| c == b';');
     let value_str = parts.next().expect("Failed to parse value string");
     let value = fast_float::parse(value_str).expect("Failed to parse value");
     let station_name = parts.next().expect("Failed to parse station name");
     
-    (station_name.to_vec(), value)
+    (station_name, value)
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
@@ -43,7 +46,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     file.read_to_end(&mut buffer).expect("Failed to read file");
     let iter = buffer.split(|&c| c == b'\n');
-    let mut result: FxHashMap<Vec<u8>, StationValues> = FxHashMap::default();
+    let mut result: FxHashMap<&[u8], StationValues> = FxHashMap::default();
     for line in iter {
         if line.len() == 0 {
             continue;
