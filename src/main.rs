@@ -3,7 +3,7 @@ use clap::Parser;
 use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
 use std::{ error, io::{BufRead, BufReader, Read}, str::from_utf8};
 use rustc_hash::FxHashMap;
-// use memchr::memchr;
+use memchr::memchr;
 
 
 
@@ -32,7 +32,14 @@ struct StationValues {
 fn read_line(data: &[u8]) -> (&[u8], f32) {
     let mut parts = data.rsplit(|&c| c == b';');
     let value_str = parts.next().expect("Failed to parse value string");
-    let value = fast_float::parse(value_str).expect("Failed to parse value");
+    // let value = fast_float::parse(value_str).expect("Failed to parse value");
+    let value = match fast_float::parse(value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("{:?} {:?}", from_utf8(data).unwrap(), from_utf8(value_str));
+            0.0
+        }
+    };
     let station_name = parts.next().expect("Failed to parse station name");
     
     (station_name, value)
@@ -45,32 +52,42 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let mut buffer = Vec::new();
 
     file.read_to_end(&mut buffer).expect("Failed to read file");
-    let iter = buffer.split(|&c| c == b'\n');
+
     let mut result: FxHashMap<&[u8], StationValues> = FxHashMap::default();
-    for line in iter {
-        if line.len() == 0 {
-            continue;
+    let mut buffer = &buffer[..];
+    loop {
+        match memchr(b';', &buffer) {
+            None => {
+                break;
+            }
+            Some(comma_seperator) => {
+                let end = memchr(b'\n', &buffer[comma_seperator..]).unwrap();
+                let name = &buffer[..comma_seperator];
+                let value = &buffer[comma_seperator+1..comma_seperator+end];
+                let value = fast_float::parse(value).expect("Failed to parse value");
+
+                result
+                    .entry(name)
+                    .and_modify(|e| {
+                        if value < e.min {
+                            e.min = value;
+                        }
+                        if value > e.max {
+                            e.max = value;
+                        }
+                        e.mean = e.mean + value;
+                        e.count += 1.0;
+                    })
+                    .or_insert(StationValues {
+                        min: value,
+                        max: value,
+                        mean: value,
+                        count: 1.0,
+                    });
+                buffer = &buffer[comma_seperator+end+1..];
+            }
+            
         }
-        let (station_name, value) = read_line(line);
-        // println!("{:?} {:?}", station_name, value);
-        result
-            .entry(station_name)
-            .and_modify(|e| {
-                if value < e.min {
-                    e.min = value;
-                }
-                if value > e.max {
-                    e.max = value;
-                }
-                e.mean = e.mean + value;
-                e.count += 1.0;
-            })
-            .or_insert(StationValues {
-                min: value,
-                max: value,
-                mean: value,
-                count: 1.0,
-            });
     }
 
     for (_name, station_values) in result.iter_mut() {
