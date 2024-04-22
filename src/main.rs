@@ -4,6 +4,10 @@ use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
 use std::{ error, io::{BufRead, BufReader, Read}, str::from_utf8};
 use rustc_hash::FxHashMap;
 use memchr::memchr;
+extern crate num_cpus;
+use std::sync::mpsc;
+use std::thread;
+
 
 
 
@@ -45,17 +49,11 @@ fn read_line(data: &[u8]) -> (&[u8], f32) {
     (station_name, value)
 }
 
-fn main() -> Result<(), Box<dyn error::Error>> {
-    let args = Args::parse();
-
-    let mut file = std::fs::File::open(&args.file).expect("Failed to open file");
-    let mut buffer = Vec::new();
-
-    file.read_to_end(&mut buffer).expect("Failed to read file");
-
-    let mut result: FxHashMap<&[u8], StationValues> = FxHashMap::default();
-    let mut buffer = &buffer[..];
-    loop {
+fn process_chunk(data: Vec<u8>) -> FxHashMap<Vec<u8>, StationValues> {
+    let mut result: FxHashMap<Vec<u8>, StationValues> = FxHashMap::default();
+    let mut buffer = &data[..];
+    // println!("processing chunk");
+   loop {
         match memchr(b';', &buffer) {
             None => {
                 break;
@@ -67,7 +65,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 let value = fast_float::parse(value).expect("Failed to parse value");
 
                 result
-                    .entry(name)
+                    .entry(name.to_vec())
                     .and_modify(|e| {
                         if value < e.min {
                             e.min = value;
@@ -89,6 +87,90 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             
         }
     }
+    // println!("done processing");
+    result
+}
+
+fn main() -> Result<(), Box<dyn error::Error>> {
+    let args = Args::parse();
+
+    let mut file = std::fs::File::open(&args.file).expect("Failed to open file");
+    let mut buffer = Vec::new();
+    // println!("starting processing 2");
+    file.read_to_end(&mut buffer).expect("Failed to read file");
+    // println!("starting processing 1");
+
+    let mut result: FxHashMap<Vec<u8>, StationValues> = FxHashMap::default();
+    let mut buffer = &buffer[..];
+
+    let (tx, rx) = mpsc::channel();
+    // println!("starting processing");
+
+
+    // count logical cores this process could try to use
+    let mut chunks_to_create = num_cpus::get();
+    let mut chunks_created = 0;
+    // println!("chunks to create: {:?}", chunks_to_create);
+    // let chunk_size = buffer.len() / num;
+    while chunks_to_create > 0 && buffer.len() > 0 {
+        let chunk_size = (buffer.len() / chunks_to_create) - 1;
+        if buffer[chunk_size] == b'\n' {
+            let chunk = buffer[..chunk_size+1].to_vec();
+            // spwan a thread to process chunk
+            // process_chunk(chunk);
+            // println!("spawning thread");
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let val = process_chunk(chunk);
+                tx.send(val).unwrap();
+            });
+
+            buffer = &buffer[chunk_size+1..];
+            chunks_to_create -= 1;
+            chunks_created += 1;
+
+        } else {
+            let newline = memchr(b'\n', &buffer[chunk_size..]).unwrap();
+            let chunk = buffer[..chunk_size+newline+1].to_vec();
+            // spwan a thread to process chunk
+            // process_chunk(chunk);
+            // println!("spawning thread");
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let val = process_chunk(chunk);
+                tx.send(val).unwrap();
+            });
+
+
+            buffer = &buffer[chunk_size+newline+1..];
+            chunks_to_create -= 1;
+            chunks_created += 1;
+        }
+    }
+
+    // println!("chunks created: {:?}", chunks_created);
+    for i in 0..chunks_created{
+        // println!("---------------- {:?}", i);
+        let val = rx.recv().unwrap();
+        
+        // println!("received chunk");
+        for (station_name, station_values) in val.into_iter() {
+            result
+                .entry(station_name)
+                .and_modify(|e| {
+                    if station_values.min < e.min {
+                        e.min = station_values.min;
+                    }
+                    if station_values.max > e.max {
+                        e.max = station_values.max;
+                    }
+                    e.mean = e.mean + station_values.mean;
+                    e.count += station_values.count;
+                })
+                .or_insert(station_values);
+        }
+    }
+
 
     for (_name, station_values) in result.iter_mut() {
         // We want all values rounded to 1 decimal place  using the semantics of IEEE 754 rounding-direction "roundTowardPositive"
@@ -97,7 +179,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         let _max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
         let _min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
         let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-        // println!("{:?};{:?};{:?};{:?}", from_utf8(name).unwrap(), _min, _mean, _max);
+        // println!("{:?};{:?};{:?};{:?}", from_utf8(_name).unwrap(), _min, _mean, _max);
     }
 
 
@@ -105,48 +187,3 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     Ok(())
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use std::{fs, path::PathBuf};
-
-//     use crate::calculate_station_values;
-//     use crate::util::read_test_output_file;
-
-//     #[test]
-//     fn test_measurement_data() {
-//         let test_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
-//         let files = fs::read_dir(test_dir).unwrap();
-
-//         for file in files {
-//             let test_file_name = file.unwrap().path().to_str().unwrap().to_string();
-//             if test_file_name.ends_with(".out") {
-//                 continue;
-//             }
-//             let output_file_name = test_file_name.replace(".txt", ".out");
-//             print!("\nTest file: {}\n", test_file_name);
-//             let test_output = read_test_output_file(output_file_name);
-//             let data = fs::read_to_string(test_file_name.clone()).expect("Failed to read file");
-//             let mut result = calculate_station_values(data);
-//             let mut test_output_map_copy = test_output.clone();
-
-//             // compare two hashmaps
-//             for (station_name, station_values) in test_output.into_iter() {
-//                 let result_station_values = result.remove(&station_name).expect(
-//                     ("Station not found: ".to_string() + &station_name + " in result hashmap")
-//                         .as_str(),
-//                 );
-//                 assert_eq!(station_values.min, result_station_values.min);
-//                 assert_eq!(station_values.max, result_station_values.max);
-//                 assert_eq!(station_values.mean, result_station_values.mean);
-//                 test_output_map_copy.remove(&station_name);
-//             }
-
-//             assert_eq!(result.len(), 0);
-//             assert_eq!(test_output_map_copy.len(), 0);
-
-//             print!("Test passed\n");
-//             print!("-----------------------------------\n");
-//         }
-//     }
-// }
