@@ -7,6 +7,8 @@ use memchr::memchr;
 extern crate num_cpus;
 use std::sync::mpsc;
 use std::thread;
+use rayon::prelude::*;
+
 
 
 
@@ -84,51 +86,60 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let mut result: FxHashMap<&[u8], StationValues> = FxHashMap::default();
     let mut buffer = &buffer[..];
 
-    let (tx, rx) = mpsc::channel();
+    // let (tx, rx) = mpsc::channel();
 
 
     // count logical cores this process could try to use
     let mut chunks_to_create = num_cpus::get();
     let mut chunks_created = 0;
+    let mut chunks: Vec<(usize, usize)> = Vec::new();
+    let mut start: usize = 0;
 
     while chunks_to_create > 0 && buffer.len() > 0 {
         let chunk_size = (buffer.len() / chunks_to_create) - 1;
         if buffer[chunk_size] == b'\n' {
-            let chunk = &buffer[..chunk_size+1];
+            // let chunk = &buffer[..chunk_size+1];
             // spwan a thread to process chunk
-            let tx = tx.clone();
-            thread::scope(|scope| {
-                scope.spawn(move || {
-                    let val = process_chunk(chunk);
-                    tx.send(val).unwrap();
-                }); 
-            });
+            // let tx = tx.clone();
+            // thread::scope(|scope| {
+            //     scope.spawn(move || {
+            //         let val = process_chunk(chunk);
+            //         tx.send(val).unwrap();
+            //     }); 
+            // });
+            chunks.push((start, chunk_size+1));
+            start = chunk_size + 1;
 
-            buffer = &buffer[chunk_size+1..];
+            // buffer = &buffer[chunk_size+1..];
             chunks_to_create -= 1;
             chunks_created += 1;
         } else {
             let newline = memchr(b'\n', &buffer[chunk_size..]).unwrap();
-            let chunk = &buffer[..chunk_size+newline+1];
+            // let chunk = &buffer[..chunk_size+newline+1];
             // spwan a thread to process chunk
-            let tx = tx.clone();
-            thread::scope(|scope| {
-                scope.spawn(move || {
-                    let val = process_chunk(chunk);
-                    tx.send(val).unwrap();
-                }); 
-            });
+            // let tx = tx.clone();
+            // thread::scope(|scope| {
+            //     scope.spawn(move || {
+            //         let val = process_chunk(chunk);
+            //         tx.send(val).unwrap();
+            //     }); 
+            // });
 
+            chunks.push((start, chunk_size+newline+1));
+            start = chunk_size+newline+1;
 
-            buffer = &buffer[chunk_size+newline+1..];
+            // buffer = &buffer[chunk_size+newline+1..];
             chunks_to_create -= 1;
             chunks_created += 1;
         }
     }
 
-    // println!("chunks created: {:?}", chunks_created);
-    for i in 0..chunks_created{
-        let val = rx.recv().unwrap();
+    // let values: Vec<FxHashMap<&[u8], StationValues>> = chunks.into_par_iter().map(|(start, end)| process_chunk(&buffer[start..end])).collect();
+    // let values = chunks.into_par_iter().map(|(start, end)| process_chunk(&buffer[start..end]));
+    let values: Vec<FxHashMap<&[u8], StationValues>> = chunks.into_par_iter().map(|(start, end)| process_chunk(&buffer[start..end])).collect();
+
+//     // println!("chunks created: {:?}", chunks_created);
+    for val in values{
         for (station_name, station_values) in val.into_iter() {
             result
                 .entry(station_name)
@@ -143,8 +154,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                     e.count += station_values.count;
                 })
                 .or_insert(station_values);
-        }
+        
     }
+}
 
 
     for (_name, station_values) in result.iter_mut() {
