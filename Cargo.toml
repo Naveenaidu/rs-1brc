@@ -18,3 +18,4 @@ memchr = { version = "2", default-features = false }
 num_cpus = "1.0"
 rayon = "1.8"
 memmap = "0.7"
+ahash = "0.8.11"

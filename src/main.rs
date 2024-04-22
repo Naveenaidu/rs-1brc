@@ -2,17 +2,14 @@ use clap::Parser;
 
 use memmap::Mmap;
 use rust_decimal::{prelude::FromPrimitive, Decimal, RoundingStrategy};
+use std::collections::HashMap;
 use std::error;
-use rustc_hash::FxHashMap;
 use memchr::memchr;
 extern crate num_cpus;
 use std::sync::mpsc;
 use std::thread;
 
-
-
-
-
+use ahash::RandomState;
 mod util;
 
 #[derive(Parser, Debug)]
@@ -34,10 +31,9 @@ struct StationValues {
     count: f32,
 }
 
-fn process_chunk(data: &[u8]) -> FxHashMap<&[u8], StationValues> {
-    let mut result: FxHashMap<&[u8], StationValues> = FxHashMap::default();
+fn process_chunk(data: &[u8]) -> HashMap::<&[u8], StationValues, RandomState> {
+    let mut result = HashMap::<&[u8], StationValues, RandomState>::default();
     let mut buffer = &data[..];
-    // println!("processing chunk");
    loop {
         match memchr(b';', &buffer) {
             None => {
@@ -72,7 +68,6 @@ fn process_chunk(data: &[u8]) -> FxHashMap<&[u8], StationValues> {
             
         }
     }
-    // println!("done processing");
     result
 }
 
@@ -85,7 +80,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let file = std::fs::File::open(&args.file).expect("Failed to open file");
     
 
-    let mut result: FxHashMap<&[u8], StationValues> = FxHashMap::default();
+    let mut result = HashMap::<&[u8], StationValues, RandomState>::default();
 
     let mmap: Mmap;
     let data: &[u8];
@@ -130,6 +125,37 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     });
 
 
+
+
+   for _ in 0..chunks_created{
+    let val = rx.recv().unwrap();
+    for (station_name, station_values) in val.into_iter() {
+        result
+            .entry(station_name)
+            .and_modify(|e| {
+                if station_values.min < e.min {
+                    e.min = station_values.min;
+                }
+                if station_values.max > e.max {
+                    e.max = station_values.max;
+                }
+                e.mean = e.mean + station_values.mean;
+                e.count += station_values.count;
+            })
+            .or_insert(station_values);
+        }
+    }
+
+
+    for (_name, station_values) in result.iter_mut() {
+        // We want all values rounded to 1 decimal place  using the semantics of IEEE 754 rounding-direction "roundTowardPositive"
+        // Note: We use Decimal instaed of Floats, because it's easier to round up the fractional part of Decimals instead of floats
+        // Read later: https://users.rust-lang.org/t/why-doesnt-round-have-an-argument-for-digits/100688/24
+        let _max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let _min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+        let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
+    }
+
 // RAYON CODE
 //     let values: Vec<FxHashMap<&[u8], StationValues>> = chunks.into_par_iter().map(|(start, end)| process_chunk(&buffer[start..end])).collect();
 
@@ -152,35 +178,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 //     }
 // }
 
-
-   for _ in 0..chunks_created{
-    let val = rx.recv().unwrap();
-    for (station_name, station_values) in val.into_iter() {
-        result
-            .entry(station_name)
-            .and_modify(|e| {
-                if station_values.min < e.min {
-                    e.min = station_values.min;
-                }
-                if station_values.max > e.max {
-                    e.max = station_values.max;
-                }
-                e.mean = e.mean + station_values.mean;
-                e.count += station_values.count;
-            })
-            .or_insert(station_values);
-    }
-}
-
-
-for (_name, station_values) in result.iter_mut() {
-    // We want all values rounded to 1 decimal place  using the semantics of IEEE 754 rounding-direction "roundTowardPositive"
-    // Note: We use Decimal instaed of Floats, because it's easier to round up the fractional part of Decimals instead of floats
-    // Read later: https://users.rust-lang.org/t/why-doesnt-round-have-an-argument-for-digits/100688/24
-    let _max =  Decimal::from_f32(station_values.max).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-    let _min =  Decimal::from_f32(station_values.min).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-    let _mean =  Decimal::from_f32(station_values.mean/station_values.count).unwrap().round_dp_with_strategy(1, RoundingStrategy::MidpointAwayFromZero);
-}
 
 
 

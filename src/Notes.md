@@ -65,3 +65,7 @@ How to speed up read_line:
   -> https://users.rust-lang.org/t/why-using-the-read-lines-iterator-is-much-slower-than-using-read-line/92815/7
 
 * use a hashmap<&static str, String>
+
+
+AHash is better than FxHash
+https://docs.rs/crate/ahash/0.3.8#:~:text=As%20you%20can%20see%20in,involve%20a%20weakness%20in%20AES.

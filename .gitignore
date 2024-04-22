@@ -1,4 +1,7 @@
 /target
 
+perf.data
+perf.data.old
+
 # 1BRC
 /measurements*.txt
