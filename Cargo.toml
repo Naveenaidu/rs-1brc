@@ -17,3 +17,4 @@ fast-float = "0.2"
 memchr = { version = "2", default-features = false }
 num_cpus = "1.0"
 rayon = "1.8"
+memmap = "0.7"
