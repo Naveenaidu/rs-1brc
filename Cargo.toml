@@ -17,5 +17,10 @@ fast-float = "0.2"
 memchr = { version = "2", default-features = false }
 num_cpus = "1.0"
 rayon = "1.8"
-memmap = "0.7"
+memmap2 = "0.9.4"
 ahash = "0.8.11"
+hashbrown = "0.14.3"
+bstr = "1.9.1"
+crossbeam-channel = "0.5.10"
+
+
